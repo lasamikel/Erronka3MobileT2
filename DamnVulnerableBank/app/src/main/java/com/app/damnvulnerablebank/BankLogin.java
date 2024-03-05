@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.util.Base64;
 import android.util.Log;
 import android.view.View;
 import android.widget.EditText;
@@ -24,10 +25,24 @@ import com.android.volley.toolbox.Volley;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.security.KeyStore;
+import java.security.PrivateKey;
+import java.security.PublicKey;
+import java.util.ArrayList;
+
+import javax.crypto.Cipher;
+import javax.crypto.CipherInputStream;
+import javax.crypto.CipherOutputStream;
+
 public class BankLogin extends AppCompatActivity {
 
     private ProgressBar spinner;
     private RelativeLayout priv;
+    KeyStore ks;
+    String alias = "nireGakoa";
     public void backToMain(View view){
         Intent into =new Intent(BankLogin.this, MainActivity.class);
         startActivity(into);
@@ -49,8 +64,11 @@ public class BankLogin extends AppCompatActivity {
 
         SharedPreferences sharedPreferences = getSharedPreferences("apiurl", Context.MODE_PRIVATE);
         final String url = sharedPreferences.getString("apiurl",null);
+
+        String apiUrl = desenkriptatuUrl(alias, url);
+
         String endpoint = "/api/user/login";
-        String finalurl = url + endpoint;
+        String finalurl = apiUrl + endpoint;
 
         final RequestQueue requestQueue = Volley.newRequestQueue(getApplicationContext());
         JSONObject requestData = new JSONObject();
@@ -83,7 +101,13 @@ public class BankLogin extends AppCompatActivity {
                             }
 
                             JSONObject obj = decryptedResponse.getJSONObject("data");
-                            String accessToken=obj.getString("accessToken");
+
+
+                            //encrypt accessToken
+
+                            String accessToken = enkriptatu(alias, obj.getString("accessToken"));
+
+                            //
                             SharedPreferences sharedPreferences = getSharedPreferences("jwt", Context.MODE_PRIVATE);
                             Log.d("accesstoken",accessToken);
                             sharedPreferences.edit().putString("accesstoken",accessToken).apply();
@@ -104,6 +128,67 @@ public class BankLogin extends AppCompatActivity {
         });
         requestQueue.add(jsonObjectRequest);
 
+    }
+
+    public String enkriptatu(String alias, String data) {
+        try {
+            ks = KeyStore.getInstance("AndroidKeyStore");
+            ks.load(null);
+
+            KeyStore.PrivateKeyEntry privateKeyEntry = (KeyStore.PrivateKeyEntry) ks.getEntry(alias, null);
+            PublicKey publicKey = privateKeyEntry.getCertificate().getPublicKey();
+
+            Cipher inCipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
+            inCipher.init(Cipher.ENCRYPT_MODE, publicKey);
+
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            CipherOutputStream cipherOutputStream = new CipherOutputStream(
+                    outputStream, inCipher);
+            cipherOutputStream.write(data.getBytes(StandardCharsets.UTF_8));
+            cipherOutputStream.close();
+
+            byte[] vals = outputStream.toByteArray();
+            String encodedString = Base64.encodeToString(vals, Base64.DEFAULT);
+            return encodedString;
+
+        } catch (Exception e) {
+            Toast.makeText(this, "Exceptionnnnn " + e.getMessage() + " occurred", Toast.LENGTH_LONG).show();
+            return "";
+        }
+    }
+
+    public String desenkriptatuUrl(String alias, String apiUrl) {
+        try {
+            ks = KeyStore.getInstance("AndroidKeyStore");
+            ks.load(null);
+
+            KeyStore.PrivateKeyEntry privateKeyEntry = (KeyStore.PrivateKeyEntry) ks.getEntry(alias, null);
+            //RSAPrivateKey privateKey = (RSAPrivateKey) privateKeyEntry.getPrivateKey();
+            PrivateKey privateKey = privateKeyEntry.getPrivateKey();
+
+            Cipher output = Cipher.getInstance("RSA/ECB/PKCS1Padding");
+            output.init(Cipher.DECRYPT_MODE, privateKey);
+
+            CipherInputStream cipherInputStream = new CipherInputStream(
+                    new ByteArrayInputStream(Base64.decode(apiUrl, Base64.DEFAULT)), output);
+            ArrayList<Byte> values = new ArrayList<>();
+            int nextByte;
+            while ((nextByte = cipherInputStream.read()) != -1) {
+                values.add((byte) nextByte);
+            }
+
+            byte[] bytes = new byte[values.size()];
+            for (int i = 0; i < bytes.length; i++) {
+                bytes[i] = values.get(i).byteValue();
+            }
+
+            return new String(bytes, 0, bytes.length, StandardCharsets.UTF_8);
+
+
+        } catch (Exception e) {
+            Toast.makeText(this, "Exception " + e.getMessage() + " occured", Toast.LENGTH_LONG).show();
+            return "";
+        }
     }
 
     @Override

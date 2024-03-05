@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.util.Base64;
 import android.view.View;
 import android.widget.EditText;
 import android.widget.Toast;
@@ -21,12 +22,57 @@ import com.google.firebase.auth.FirebaseAuth;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
+import java.security.KeyStore;
+import java.security.PrivateKey;
+import java.util.ArrayList;
+
+import javax.crypto.Cipher;
+import javax.crypto.CipherInputStream;
+
 public class RegisterBank extends AppCompatActivity {
-    FirebaseAuth auth;
+    FirebaseAuth auth; 
 
     public void backToMain(View view){
         Intent intent =new Intent(RegisterBank.this, MainActivity.class);
         startActivity(intent);
+    }
+
+    public String desenkriptatu(String data ) {
+        try {
+            String alias = "nireGakoa";
+            KeyStore ks;
+            ks = KeyStore.getInstance("AndroidKeyStore");
+            ks.load(null);
+
+            KeyStore.PrivateKeyEntry privateKeyEntry = (KeyStore.PrivateKeyEntry) ks.getEntry(alias, null);
+            //RSAPrivateKey privateKey = (RSAPrivateKey) privateKeyEntry.getPrivateKey();
+            PrivateKey privateKey = privateKeyEntry.getPrivateKey();
+
+            Cipher output = Cipher.getInstance("RSA/ECB/PKCS1Padding");
+            output.init(Cipher.DECRYPT_MODE, privateKey);
+
+            CipherInputStream cipherInputStream = new CipherInputStream(
+                    new ByteArrayInputStream(Base64.decode(data, Base64.DEFAULT)), output);
+            ArrayList<Byte> values = new ArrayList<>();
+            int nextByte;
+            while ((nextByte = cipherInputStream.read()) != -1) {
+                values.add((byte) nextByte);
+            }
+
+            byte[] bytes = new byte[values.size()];
+            for (int i = 0; i < bytes.length; i++) {
+                bytes[i] = values.get(i).byteValue();
+            }
+
+            return new String(bytes, 0, bytes.length, StandardCharsets.UTF_8);
+
+
+        } catch (Exception e) {
+            Toast.makeText(this, "Exception " + e.getMessage() + " occured", Toast.LENGTH_LONG).show();
+            return "";
+        }
     }
     public void register(View view)
     {
@@ -37,7 +83,7 @@ public class RegisterBank extends AppCompatActivity {
         String password = inputPassword.getText().toString().trim();
 
         SharedPreferences sharedPreferences = getSharedPreferences("apiurl", Context.MODE_PRIVATE);
-        final String url = sharedPreferences.getString("apiurl",null);
+        final String url = desenkriptatu(sharedPreferences.getString("apiurl",null));
         String endpoint = "/api/user/register";
         String finalUrl = url + endpoint;
 
